@@ -1,0 +1,20 @@
+[
+    {
+        "Name": "paper_reproduction_framework",
+        "Title": "ReproduceAI: A Framework for Automated Reproduction of Scientific Papers",
+        "Experiment": "Develop a framework that can automatically extract methods, experiments, and results from research papers without code, implement the described algorithms, and validate the reproduced results against the original claims. The framework should include components for paper parsing, method implementation, experiment execution, and result comparison.",
+        "Interestingness": 9,
+        "Feasibility": 7,
+        "Novelty": 8,
+        "novel": true
+    },
+    {
+        "Name": "method_extraction_llm",
+        "Title": "Extracting Implementable Methods from Scientific Papers Using Large Language Models",
+        "Experiment": "Develop a specialized LLM-based approach to extract detailed method descriptions from scientific papers, including algorithms, hyperparameters, and experimental setups. The system should be able to identify ambiguities in the paper and propose reasonable assumptions to fill in missing details.",
+        "Interestingness": 8,
+        "Feasibility": 8,
+        "Novelty": 7,
+        "novel": true
+    }
+]
