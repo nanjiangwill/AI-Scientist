@@ -8,6 +8,7 @@ openhands-aci>=0.2.5
 matplotlib
 pypdf
 pymupdf4llm
+fpdf
 # Common Requirements
 torch
 numpy
