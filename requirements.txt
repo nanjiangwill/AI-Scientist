@@ -1,9 +1,9 @@
 # LLM APIs
 anthropic
-aider-chat
 backoff
 openai
 google-generativeai
+openhands-aci>=0.2.5
 # Viz
 matplotlib
 pypdf

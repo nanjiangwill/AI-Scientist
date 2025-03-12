@@ -513,10 +513,24 @@ First, re-think the Title if necessary. Keep this concise and descriptive of the
 
 
 if __name__ == "__main__":
-    from aider.coders import Coder
-    from aider.models import Model
-    from aider.io import InputOutput
     import json
+    import sys
+    import os
+    
+    # Add parent directory to path to import openhands_wrapper
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from ai_scientist.openhands_wrapper import create_openhands_coder
+    
+    # For backward compatibility
+    class InputOutput:
+        def __init__(self, yes=False, chat_history_file=None):
+            self.yes = yes
+            self.chat_history_file = chat_history_file
+
+    # For backward compatibility
+    class Model:
+        def __init__(self, name):
+            self.name = name
 
     parser = argparse.ArgumentParser(description="Perform writeup for a project")
     parser.add_argument("--folder", type=str)
@@ -562,7 +576,7 @@ if __name__ == "__main__":
         main_model = Model("openrouter/meta-llama/llama-3.1-405b-instruct")
     else:
         main_model = Model(model)
-    coder = Coder.create(
+    coder = create_openhands_coder(
         main_model=main_model,
         fnames=fnames,
         io=io,

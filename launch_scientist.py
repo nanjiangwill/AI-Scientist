@@ -8,10 +8,21 @@ import shutil
 import sys
 import time
 import torch
-from aider.coders import Coder
-from aider.io import InputOutput
-from aider.models import Model
 from datetime import datetime
+
+# Import our OpenHands wrapper instead of aider
+from ai_scientist.openhands_wrapper import create_openhands_coder
+
+# For backward compatibility
+class InputOutput:
+    def __init__(self, yes=False, chat_history_file=None):
+        self.yes = yes
+        self.chat_history_file = chat_history_file
+
+# For backward compatibility
+class Model:
+    def __init__(self, name):
+        self.name = name
 
 from ai_scientist.generate_ideas import generate_ideas, check_idea_novelty
 from ai_scientist.llm import create_client, AVAILABLE_LLMS
@@ -202,7 +213,7 @@ def do_idea(
             main_model = Model("openrouter/meta-llama/llama-3.1-405b-instruct")
         else:
             main_model = Model(model)
-        coder = Coder.create(
+        coder = create_openhands_coder(
             main_model=main_model,
             fnames=fnames,
             io=io,
@@ -236,7 +247,7 @@ def do_idea(
                 main_model = Model("openrouter/meta-llama/llama-3.1-405b-instruct")
             else:
                 main_model = Model(model)
-            coder = Coder.create(
+            coder = create_openhands_coder(
                 main_model=main_model,
                 fnames=fnames,
                 io=io,
