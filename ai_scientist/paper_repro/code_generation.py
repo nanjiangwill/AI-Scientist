@@ -1,8 +1,11 @@
 """
-Code Generation Module
+Code generation module for paper reproduction.
 
-This module is responsible for implementing the methods and algorithms described in a paper,
-including setting up the experimental infrastructure to reproduce the results.
+Note: OpenHands integration is now the preferred method for code generation in the AI Scientist
+paper reproduction system. This module is kept for backward compatibility and as an alternative
+when the OpenHands system is not available.
+
+This module provides functions to generate implementation code for a paper.
 """
 
 import json

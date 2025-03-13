@@ -1,8 +1,12 @@
 """
-Experiment Reproduction Module
+Experiment reproduction module for paper reproduction.
 
-This module is responsible for running the experiments defined in the implementation
-to reproduce the results from the paper.
+Note: OpenHands integration is now the preferred method for experiment execution in the AI Scientist
+paper reproduction system. This module is kept for backward compatibility and as an alternative
+when the OpenHands system is not available.
+
+This module provides functions to run experiments based on the code implementation to reproduce
+the results reported in a paper.
 """
 
 import json

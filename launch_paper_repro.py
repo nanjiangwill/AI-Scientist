@@ -8,15 +8,11 @@ import subprocess
 import sys
 import time
 import torch
-from aider.coders import Coder
-from aider.io import InputOutput
-from aider.models import Model
 from datetime import datetime
 
 from ai_scientist.llm import create_client, AVAILABLE_LLMS
 from ai_scientist.paper_repro.paper_understanding import extract_paper_info
-from ai_scientist.paper_repro.code_generation import generate_implementation
-from ai_scientist.paper_repro.experiment_reproduction import run_experiments
+from ai_scientist.paper_repro.openhands_integration import generate_code_with_openhands, run_experiments_with_openhands
 from ai_scientist.paper_repro.result_analysis import analyze_results
 from ai_scientist.paper_repro.report_generation import generate_report
 
@@ -59,6 +55,12 @@ def parse_arguments():
         default="claude-3-5-sonnet-20240620",
         choices=AVAILABLE_LLMS,
         help="Model to use for AI Scientist paper reproduction.",
+    )
+    parser.add_argument(
+        "--openhands_model_config",
+        type=str,
+        default="llm.eval_sonnet",
+        help="OpenHands model configuration name to use for code generation and experiments.",
     )
     parser.add_argument(
         "--report_format",
@@ -138,33 +140,32 @@ def main():
         with open(osp.join(paper_dir, "paper_info.json"), "r") as f:
             paper_info = json.load(f)
     
-    # 2. Generate implementation
+    # 2. Generate implementation with OpenHands
     if not args.skip_code_generation:
         print(f"Generating implementation for paper: {paper_name}")
         implementation_dir = osp.join(paper_dir, "implementation")
         os.makedirs(implementation_dir, exist_ok=True)
         
-        # Configure the coder
-        inp = InputOutput(no_stream=True, yes=True)
-        Model.chat_completions = client_model
-        coder = Coder(
-            inp,
-            fnames=[osp.join(implementation_dir, "README.md")],
-            main_model=Model.create(args.model),
-            edit_format="full",
-            pretty=False,
+        generate_code_with_openhands(
+            paper_info, 
+            implementation_dir, 
+            args.openhands_model_config, 
+            template=args.template
         )
-        
-        generate_implementation(paper_info, implementation_dir, coder, client, client_model, template=args.template)
     
-    # 3. Run experiments
+    # 3. Run experiments with OpenHands
     if not args.skip_experiments:
         print(f"Running experiments for paper: {paper_name}")
         results_dir = osp.join(paper_dir, "results")
         os.makedirs(results_dir, exist_ok=True)
         
         implementation_dir = osp.join(paper_dir, "implementation")
-        results = run_experiments(paper_info, implementation_dir, results_dir, available_gpus, client, client_model)
+        results = run_experiments_with_openhands(
+            paper_info, 
+            implementation_dir, 
+            results_dir, 
+            args.openhands_model_config
+        )
         
         # Save results
         with open(osp.join(results_dir, "experiment_results.json"), "w") as f:
