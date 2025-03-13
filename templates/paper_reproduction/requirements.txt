@@ -10,6 +10,16 @@ pymupdf>=1.19.0
 pypdf>=3.0.0
 pymupdf4llm>=0.1.0
 
+# Table extraction
+tabula-py>=2.3.0
+camelot-py>=0.10.1
+pdfplumber>=0.7.0
+
+# Image processing and OCR
+pillow>=9.0.0
+pytesseract>=0.3.8
+opencv-python>=4.5.0
+
 # Deep learning (optional, based on paper requirements)
 torch>=1.10.0
 tensorflow>=2.8.0

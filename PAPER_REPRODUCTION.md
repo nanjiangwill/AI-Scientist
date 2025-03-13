@@ -6,11 +6,31 @@ This extension of the AI Scientist framework allows you to reproduce results fro
 
 The paper reproduction workflow consists of the following steps:
 
-1. **Paper Extraction**: Extract key information from the paper, including methods, experiments, and results.
+1. **Paper Extraction**: Extract key information from the paper, including:
+   - Methods, experiments, and results
+   - Tables with numerical data
+   - Images, figures, and diagrams
+   - Algorithms and pseudocode
 2. **Method Implementation**: Generate code implementations based on the extracted method descriptions.
 3. **Experiment Execution**: Run experiments following the original paper's setup.
 4. **Result Validation**: Compare reproduced results with the original paper's claims.
 5. **Report Generation**: Generate a comprehensive report on the reproduction process and findings.
+
+### Enhanced Table and Image Extraction
+
+The system includes advanced capabilities for extracting critical information from tables and images:
+
+- **Table Extraction**: Automatically extracts tables from PDFs using multiple methods:
+  - PyMuPDF for layout-based extraction
+  - Tabula-py for grid-based extraction
+  - Regex patterns for text-based tables
+  - Saves tables in both CSV and JSON formats
+
+- **Image Extraction**: Extracts figures and diagrams with:
+  - Automatic caption detection
+  - OCR for text embedded in images
+  - Association of figures with their descriptions
+  - Preservation of image context
 
 ## Quick Start
 
@@ -83,10 +103,43 @@ The system accepts the following inputs:
 
 The system generates the following outputs in the specified output directory:
 
-- **extracted_info.json**: Extracted information from the paper
-- **implementation/**: Generated code implementations
-- **results/**: Results from running the experiments
-- **validation/**: Validation of reproduced results against original claims
+- **extracted_info.json**: Extracted information from the paper, including:
+  - Paper metadata (title, authors, abstract)
+  - Methods with descriptions and parameters
+  - Experiments with setup details
+  - Results with metrics and values
+  - Tables, figures, and algorithms
+
+- **extracted_tables/**: Directory containing extracted tables:
+  - CSV files for each table (for easy data import)
+  - JSON files with table metadata (captions, locations)
+  - Original structure and formatting preserved
+
+- **extracted_images/**: Directory containing extracted figures:
+  - PNG files of all figures and diagrams
+  - Text extracted from images via OCR
+  - JSON files with figure metadata (captions, locations)
+
+- **extracted_algorithms/**: Directory containing extracted algorithms:
+  - Text files with algorithm steps
+  - JSON files with algorithm metadata
+  - Preserved structure and indentation
+
+- **implementation/**: Generated code implementations:
+  - Python files for each method
+  - Experiment script to run all methods
+  - Implementation metadata
+
+- **results/**: Results from running the experiments:
+  - Numerical results in JSON format
+  - Generated plots and visualizations
+  - Logs from experiment runs
+
+- **validation/**: Validation of reproduced results:
+  - Comparison between original and reproduced results
+  - Visualizations of differences
+  - Analysis of reproduction quality
+
 - **report/**: LaTeX source and PDF report on the reproduction
 - **reproduction_report.pdf**: Final report summarizing the reproduction
 
@@ -132,11 +185,34 @@ The paper reproduction system has the following limitations:
 
 ### 1. Paper Extraction
 
-The system uses a combination of PDF parsing and text analysis to extract:
+The system uses a combination of PDF parsing, text analysis, and computer vision techniques to extract:
+
+#### Text Content
 - Title, authors, and abstract
 - Method descriptions and algorithms
 - Experimental setup and datasets
 - Reported results and evaluation metrics
+
+#### Tables
+The system extracts tables using multiple complementary approaches:
+- **Layout Analysis**: Uses PyMuPDF to detect tables based on document layout
+- **Grid Detection**: Uses Tabula-py to identify grid structures in the PDF
+- **Text Pattern Matching**: Uses regex patterns to identify tabular data in plain text
+- **Post-processing**: Cleans and structures extracted tables, preserving relationships between cells
+
+#### Images and Figures
+The system extracts visual content with:
+- **Image Extraction**: Directly extracts embedded images from the PDF
+- **Caption Association**: Matches images with their captions by analyzing nearby text
+- **OCR Processing**: Applies optical character recognition to extract text from diagrams
+- **Context Preservation**: Maintains the relationship between figures and their descriptions
+
+#### Algorithms
+The system extracts algorithms and pseudocode by:
+- **Block Detection**: Identifies algorithm blocks based on formatting and keywords
+- **Structure Preservation**: Maintains indentation and hierarchical structure
+- **Step Extraction**: Separates individual steps while preserving their sequence
+- **Parameter Identification**: Extracts input/output parameters and their descriptions
 
 ### 2. Method Implementation
 

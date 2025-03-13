@@ -3,7 +3,7 @@
 Paper Parser Module
 
 This module provides functionality to extract information from research papers,
-including methods, experiments, and results.
+including methods, experiments, results, tables, and images.
 """
 
 import os
@@ -11,7 +11,8 @@ import re
 import json
 import logging
 import tempfile
-from typing import Dict, List, Any, Optional, Union
+import csv
+from typing import Dict, List, Any, Optional, Union, Tuple
 import requests
 from pathlib import Path
 
@@ -28,6 +29,21 @@ try:
 except ImportError:
     PYPDF_AVAILABLE = False
 
+# Try to import table extraction libraries
+try:
+    import tabula
+    TABULA_AVAILABLE = True
+except ImportError:
+    TABULA_AVAILABLE = False
+
+# Try to import OCR libraries
+try:
+    import pytesseract
+    from PIL import Image
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -40,14 +56,16 @@ logger = logging.getLogger(__name__)
 class PaperParser:
     """Class for parsing research papers and extracting information"""
     
-    def __init__(self, paper_path: str):
+    def __init__(self, paper_path: str, output_dir: str = None):
         """
         Initialize the paper parser
         
         Args:
             paper_path: Path to the paper PDF or URL
+            output_dir: Directory to save extracted files (tables, images, etc.)
         """
         self.paper_path = paper_path
+        self.output_dir = output_dir or os.path.dirname(paper_path)
         self.text = None
         self.sections = {}
         self.extracted_info = {
@@ -57,8 +75,15 @@ class PaperParser:
             "methods": [],
             "experiments": [],
             "results": [],
-            "metrics": []
+            "metrics": [],
+            "tables": [],
+            "figures": [],
+            "algorithms": []
         }
+        
+        # Create output directory if it doesn't exist
+        if self.output_dir:
+            os.makedirs(self.output_dir, exist_ok=True)
     
     def load_paper(self) -> str:
         """
@@ -491,6 +516,358 @@ class PaperParser:
         
         return results
     
+    def extract_tables(self) -> List[Dict[str, Any]]:
+        """
+        Extract tables from the paper
+        
+        Returns:
+            List of dictionaries containing table information
+        """
+        logger.info("Extracting tables from paper")
+        
+        tables = []
+        tables_dir = os.path.join(self.output_dir, "extracted_tables")
+        os.makedirs(tables_dir, exist_ok=True)
+        
+        # Method 1: Extract tables using PyMuPDF
+        if PYMUPDF_AVAILABLE:
+            try:
+                doc = fitz.open(self.paper_path)
+                for page_num, page in enumerate(doc):
+                    # Extract tables using PyMuPDF
+                    tab_dict = page.find_tables()
+                    if tab_dict and hasattr(tab_dict, 'tables'):
+                        for table_idx, table in enumerate(tab_dict.tables):
+                            # Convert table to structured data
+                            rows = []
+                            for row in table.rows:
+                                cells = []
+                                for cell in row.cells:
+                                    rect = fitz.Rect(cell.bbox)
+                                    text = page.get_text("text", clip=rect).strip()
+                                    cells.append(text)
+                                rows.append(cells)
+                            
+                            # Find caption (usually above or below the table)
+                            caption = ""
+                            rect_above = fitz.Rect(table.bbox[0], table.bbox[1] - 50, table.bbox[2], table.bbox[1])
+                            text_above = page.get_text("text", clip=rect_above)
+                            if "Table" in text_above:
+                                caption = text_above.strip()
+                            
+                            # Add table to list
+                            table_id = f"Table {page_num+1}_{table_idx+1}"
+                            tables.append({
+                                "id": table_id,
+                                "caption": caption,
+                                "content": rows,
+                                "location": f"Page {page_num + 1}"
+                            })
+                            
+                            # Save as CSV
+                            csv_path = os.path.join(tables_dir, f"{table_id}.csv")
+                            with open(csv_path, "w", newline="") as f:
+                                writer = csv.writer(f)
+                                for row in rows:
+                                    writer.writerow(row)
+                            
+                            # Save as JSON
+                            json_path = os.path.join(tables_dir, f"{table_id}.json")
+                            with open(json_path, "w") as f:
+                                json.dump({
+                                    "id": table_id,
+                                    "caption": caption,
+                                    "content": rows,
+                                    "location": f"Page {page_num + 1}"
+                                }, f, indent=4)
+                doc.close()
+            except Exception as e:
+                logger.warning(f"PyMuPDF table extraction failed: {e}")
+        
+        # Method 2: Extract tables using tabula-py
+        if TABULA_AVAILABLE and not tables:
+            try:
+                # Convert PDF path to absolute path if it's not a URL
+                pdf_path = self.paper_path
+                if not pdf_path.startswith(('http://', 'https://')):
+                    pdf_path = os.path.abspath(pdf_path)
+                
+                # Extract tables using tabula
+                extracted_tables = tabula.read_pdf(pdf_path, pages='all', multiple_tables=True)
+                
+                for i, df in enumerate(extracted_tables):
+                    if not df.empty:
+                        table_id = f"Table_{i+1}"
+                        
+                        # Convert DataFrame to list of lists
+                        rows = [df.columns.tolist()]  # Header row
+                        rows.extend(df.values.tolist())
+                        
+                        # Add table to list
+                        tables.append({
+                            "id": table_id,
+                            "caption": "",  # Tabula doesn't extract captions
+                            "content": rows,
+                            "location": "Unknown"
+                        })
+                        
+                        # Save as CSV
+                        csv_path = os.path.join(tables_dir, f"{table_id}.csv")
+                        df.to_csv(csv_path, index=False)
+                        
+                        # Save as JSON
+                        json_path = os.path.join(tables_dir, f"{table_id}.json")
+                        with open(json_path, "w") as f:
+                            json.dump({
+                                "id": table_id,
+                                "caption": "",
+                                "content": rows,
+                                "location": "Unknown"
+                            }, f, indent=4)
+            except Exception as e:
+                logger.warning(f"Tabula table extraction failed: {e}")
+        
+        # Method 3: Extract tables using regex patterns (fallback)
+        if not tables and self.text:
+            # Look for table patterns in the text
+            table_patterns = [
+                r'(?:Table|Tab\.)\s+\d+(?:.*?)(?:\n|\r\n)(?:.*?)(?:\n|\r\n)((?:(?:\||\+)?(?:[-]+(?:\||\+))+[-]+(?:\||\+)?(?:\n|\r\n))+)',
+                r'(?:\n|\r\n)((?:[^\n]+\|[^\n]+(?:\n|\r\n))+)'
+            ]
+            
+            for pattern in table_patterns:
+                table_matches = re.finditer(pattern, self.text, re.DOTALL)
+                
+                for i, table_match in enumerate(table_matches):
+                    table_text = table_match.group(1)
+                    
+                    # Process table rows
+                    rows = []
+                    for row in table_text.strip().split('\n'):
+                        # Skip separator rows
+                        if re.match(r'^(?:\||\+)?(?:[-]+(?:\||\+))+[-]+(?:\||\+)?$', row):
+                            continue
+                        
+                        # Extract cells
+                        cells = re.split(r'\|', row.strip('|'))
+                        cells = [cell.strip() for cell in cells if cell.strip()]
+                        
+                        if cells:
+                            rows.append(cells)
+                    
+                    if rows:
+                        table_id = f"Table_regex_{i+1}"
+                        
+                        # Find caption
+                        caption = ""
+                        context_before = self.text[max(0, table_match.start() - 200):table_match.start()]
+                        caption_match = re.search(r'(?:Table|Tab\.)\s+\d+[\.:]?\s*([^\n]+)', context_before)
+                        if caption_match:
+                            caption = caption_match.group(1).strip()
+                        
+                        # Add table to list
+                        tables.append({
+                            "id": table_id,
+                            "caption": caption,
+                            "content": rows,
+                            "location": "Unknown"
+                        })
+                        
+                        # Save as CSV
+                        csv_path = os.path.join(tables_dir, f"{table_id}.csv")
+                        with open(csv_path, "w", newline="") as f:
+                            writer = csv.writer(f)
+                            for row in rows:
+                                writer.writerow(row)
+                        
+                        # Save as JSON
+                        json_path = os.path.join(tables_dir, f"{table_id}.json")
+                        with open(json_path, "w") as f:
+                            json.dump({
+                                "id": table_id,
+                                "caption": caption,
+                                "content": rows,
+                                "location": "Unknown"
+                            }, f, indent=4)
+        
+        self.extracted_info["tables"] = tables
+        return tables
+    
+    def extract_images(self) -> List[Dict[str, Any]]:
+        """
+        Extract images from the paper
+        
+        Returns:
+            List of dictionaries containing image information
+        """
+        logger.info("Extracting images from paper")
+        
+        images = []
+        images_dir = os.path.join(self.output_dir, "extracted_images")
+        os.makedirs(images_dir, exist_ok=True)
+        
+        if PYMUPDF_AVAILABLE:
+            try:
+                doc = fitz.open(self.paper_path)
+                
+                for page_num, page in enumerate(doc):
+                    # Extract images
+                    image_list = page.get_images(full=True)
+                    
+                    for img_idx, img in enumerate(image_list):
+                        xref = img[0]
+                        base_image = doc.extract_image(xref)
+                        image_bytes = base_image["image"]
+                        
+                        # Save image
+                        image_filename = f"figure_{page_num+1}_{img_idx+1}.png"
+                        image_path = os.path.join(images_dir, image_filename)
+                        with open(image_path, "wb") as f:
+                            f.write(image_bytes)
+                        
+                        # Find caption (usually below the image)
+                        caption = ""
+                        try:
+                            rect = page.get_image_bbox(xref)
+                            rect_below = fitz.Rect(rect[0], rect[3], rect[2], rect[3] + 50)
+                            text_below = page.get_text("text", clip=rect_below)
+                            
+                            if "Figure" in text_below or "Fig." in text_below:
+                                caption = text_below.strip()
+                        except:
+                            # If we can't get the image bbox, try to find captions in the text
+                            pass
+                        
+                        # If no caption found, try to find it in the text
+                        if not caption:
+                            # Look for figure captions in the text
+                            figure_pattern = r'(?:Figure|Fig\.)\s+\d+[\.:]?\s*([^\n]+)'
+                            figure_matches = re.finditer(figure_pattern, self.text)
+                            
+                            for match in figure_matches:
+                                caption = match.group(1).strip()
+                                break
+                        
+                        # Perform OCR if available
+                        extracted_text = ""
+                        if OCR_AVAILABLE:
+                            try:
+                                # Open the image with PIL
+                                pil_image = Image.open(image_path)
+                                
+                                # Perform OCR
+                                extracted_text = pytesseract.image_to_string(pil_image)
+                                
+                                # Save extracted text
+                                text_path = os.path.join(images_dir, f"{os.path.splitext(image_filename)[0]}_text.txt")
+                                with open(text_path, "w") as f:
+                                    f.write(extracted_text)
+                            except Exception as e:
+                                logger.warning(f"OCR failed for {image_filename}: {e}")
+                        
+                        # Add image to list
+                        image_info = {
+                            "id": f"Figure {page_num+1}_{img_idx+1}",
+                            "caption": caption,
+                            "filename": image_filename,
+                            "location": f"Page {page_num + 1}",
+                            "extracted_text": extracted_text
+                        }
+                        
+                        images.append(image_info)
+                        
+                        # Save image info as JSON
+                        json_path = os.path.join(images_dir, f"{os.path.splitext(image_filename)[0]}_info.json")
+                        with open(json_path, "w") as f:
+                            json.dump(image_info, f, indent=4)
+                
+                doc.close()
+            except Exception as e:
+                logger.warning(f"PyMuPDF image extraction failed: {e}")
+        
+        self.extracted_info["figures"] = images
+        return images
+    
+    def extract_algorithms(self) -> List[Dict[str, Any]]:
+        """
+        Extract algorithms from the paper
+        
+        Returns:
+            List of dictionaries containing algorithm information
+        """
+        logger.info("Extracting algorithms from paper")
+        
+        algorithms = []
+        algorithms_dir = os.path.join(self.output_dir, "extracted_algorithms")
+        os.makedirs(algorithms_dir, exist_ok=True)
+        
+        if not self.text:
+            logger.warning("No text loaded. Call load_paper() first.")
+            return []
+        
+        # Look for algorithm blocks in the text
+        algorithm_patterns = [
+            r'(?i)(?:Algorithm|Alg\.)\s+\d+[\.:]?\s*([^\n]+)(?:\n|\r\n)((?:(?:\d+:|[a-z]+:|\s{2,}|\t).+(?:\n|\r\n))+)',
+            r'(?i)Procedure\s+([A-Za-z0-9_]+)(?:\n|\r\n)((?:(?:\d+:|[a-z]+:|\s{2,}|\t).+(?:\n|\r\n))+)'
+        ]
+        
+        for pattern in algorithm_patterns:
+            matches = re.finditer(pattern, self.text, re.DOTALL)
+            
+            for i, match in enumerate(matches):
+                algorithm_name = match.group(1).strip()
+                algorithm_text = match.group(2).strip()
+                
+                # Extract steps
+                steps = []
+                for line in algorithm_text.split('\n'):
+                    line = line.strip()
+                    if line:
+                        # Remove line numbers or bullet points
+                        line = re.sub(r'^\d+[\.:]|\s*•\s*', '', line).strip()
+                        steps.append(line)
+                
+                algorithm_id = f"Algorithm_{i+1}"
+                
+                # Find location (page number)
+                location = "Unknown"
+                if PYMUPDF_AVAILABLE:
+                    try:
+                        doc = fitz.open(self.paper_path)
+                        for page_num, page in enumerate(doc):
+                            page_text = page.get_text()
+                            if algorithm_name in page_text and any(step in page_text for step in steps[:2]):
+                                location = f"Page {page_num + 1}"
+                                break
+                        doc.close()
+                    except Exception as e:
+                        logger.warning(f"Failed to find algorithm location: {e}")
+                
+                # Add algorithm to list
+                algorithm_info = {
+                    "id": algorithm_id,
+                    "name": algorithm_name,
+                    "steps": steps,
+                    "location": location
+                }
+                
+                algorithms.append(algorithm_info)
+                
+                # Save algorithm as text file
+                text_path = os.path.join(algorithms_dir, f"{algorithm_id}.txt")
+                with open(text_path, "w") as f:
+                    f.write(f"{algorithm_name}\n\n")
+                    for step in steps:
+                        f.write(f"- {step}\n")
+                
+                # Save algorithm info as JSON
+                json_path = os.path.join(algorithms_dir, f"{algorithm_id}.json")
+                with open(json_path, "w") as f:
+                    json.dump(algorithm_info, f, indent=4)
+        
+        self.extracted_info["algorithms"] = algorithms
+        return algorithms
+    
     def extract_all_info(self) -> Dict[str, Any]:
         """
         Extract all information from the paper
@@ -521,6 +898,17 @@ class PaperParser:
         # Extract results
         self.extract_results()
         
+        # Extract tables
+        self.extract_tables()
+        
+        # Extract images
+        self.extract_images()
+        
+        # Extract algorithms
+        self.extract_algorithms()
+        
+        logger.info("Completed extraction of all information from paper")
+        
         return self.extracted_info
     
     def save_extracted_info(self, output_path: str) -> None:
@@ -542,15 +930,26 @@ def main():
     
     parser = argparse.ArgumentParser(description="Extract information from research papers")
     parser.add_argument("paper_path", type=str, help="Path to the paper PDF or URL")
-    parser.add_argument("--output", type=str, default="extracted_info.json", help="Path to save the extracted information")
+    parser.add_argument("--output_dir", type=str, default="paper_extraction", help="Directory to save extracted information and files")
+    parser.add_argument("--output", type=str, default="extracted_info.json", help="Filename to save the extracted information")
     args = parser.parse_args()
     
+    # Create output directory
+    os.makedirs(args.output_dir, exist_ok=True)
+    
     # Parse the paper
-    parser = PaperParser(args.paper_path)
+    parser = PaperParser(args.paper_path, output_dir=args.output_dir)
     parser.extract_all_info()
     
     # Save the extracted information
-    parser.save_extracted_info(args.output)
+    output_path = os.path.join(args.output_dir, args.output)
+    parser.save_extracted_info(output_path)
+    
+    logger.info(f"Paper extraction completed. Results saved to {args.output_dir}")
+    logger.info(f"- Extracted information: {output_path}")
+    logger.info(f"- Tables: {os.path.join(args.output_dir, 'extracted_tables')}")
+    logger.info(f"- Images: {os.path.join(args.output_dir, 'extracted_images')}")
+    logger.info(f"- Algorithms: {os.path.join(args.output_dir, 'extracted_algorithms')}")
 
 
 if __name__ == "__main__":
